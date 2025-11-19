@@ -93,9 +93,9 @@ if 'risk_score' not in st.session_state:
 if 'eff_score' not in st.session_state:
     st.session_state.eff_score = 50
 
-# --- 3. 后端绘图逻辑 (v9.2 修复星号BUG) ---
+# --- 3. 后端绘图逻辑 (v9.3: 修复字体路径 + 调试信息) ---
 def create_share_image(animal, emoji, archetype, desc, tags, footer_text):
-    # 🧹 关键修复：清洗文案中的 Markdown 符号
+    # 清洗 Markdown
     clean_desc = desc.replace("**", "") 
     
     W, H = 750, 1100  
@@ -111,11 +111,35 @@ def create_share_image(animal, emoji, archetype, desc, tags, footer_text):
     img = Image.new('RGB', (W, H), color=theme['bg'])
     draw = ImageDraw.Draw(img)
     
+    # === 字体加载 (智能修复版) ===
     try:
-        font_path = "C:/Windows/Fonts/msyh.ttc" 
-        if not os.path.exists(font_path):
-            font_path = "C:/Windows/Fonts/msyh.ttf"
+        font_path = None
+        # 1. 定义搜索列表 (文件名区分大小写，所以多写几个变体)
+        search_list = [
+            "font.ttc", "font.ttf",
+            "msyh.ttc", "msyh.ttf", "MSYH.TTC",
+            "SimHei.ttf"
+        ]
         
+        # 2. 优先在当前目录找
+        for f in search_list:
+            if os.path.exists(f):
+                font_path = f
+                break
+        
+        # 3. 如果本地没找到，尝试 Windows 默认路径 (仅限本地调试)
+        if font_path is None and os.path.exists("C:/Windows/Fonts/msyh.ttc"):
+            font_path = "C:/Windows/Fonts/msyh.ttc"
+            
+        # 4. 如果还是没找到，打印当前目录下的文件 (帮我们找原因)
+        if font_path is None:
+            current_files = os.listdir('.')
+            # 在图片上写报错信息，方便调试
+            draw.text((10, 10), f"Font Not Found!", fill="red")
+            draw.text((10, 50), f"Files: {current_files}", fill="red")
+            print(f"Font Error: No font found. Dir content: {current_files}") # 控制台日志
+            return None
+
         f_h1 = ImageFont.truetype(font_path, 60)     
         f_type = ImageFont.truetype(font_path, 30)   
         f_tag = ImageFont.truetype(font_path, 24)    
@@ -124,6 +148,7 @@ def create_share_image(animal, emoji, archetype, desc, tags, footer_text):
         f_brand = ImageFont.truetype(font_path, 20)  
         f_scan_text = ImageFont.truetype(font_path, 18)
     except Exception as e:
+        st.error(f"系统错误: {e}")
         return None
 
     card_margin = 60
@@ -182,15 +207,14 @@ def create_share_image(animal, emoji, archetype, desc, tags, footer_text):
         draw.text((current_x + tag_padding_x, current_y + 6), t, font=f_tag, fill="#666")
         current_x += t_w + tag_padding_x*2 + tag_gap
 
-    # 描述 (使用 clean_desc，并微调每行字数)
+    # 描述
     current_y += 80
     line_height = 45
-    text_margin_x = 110 # 稍微放宽一点点边距 (120 -> 110)
+    text_margin_x = 110
     max_text_width = W - (text_margin_x * 2)
     
     lines = []
     current_line = ""
-    # 手动换行算法
     for char in clean_desc:
         if draw.textlength(current_line + char, font=f_desc) <= max_text_width:
             current_line += char
@@ -282,7 +306,7 @@ def submit_q(idx, choice):
 # --- 5. 页面渲染 ---
 if st.session_state.page == 'cover':
     st.title("🧬 摸鱼生物鉴定所")
-    st.markdown("<div style='text-align:center; color:#999;'>V9.2 完美收官版 | 职场生存博弈 | 8道精准测试</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; color:#999;'>V9.3 最终稳定版 | 职场生存博弈 | 8道精准测试</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
         st.info("💡 这是一个关于“如何在内卷中优雅存活”的科学评估。")
@@ -397,7 +421,8 @@ elif st.session_state.page == 'result':
                 use_container_width=True 
             )
         else:
-            st.warning("⚠️ 字体缺失，无法生成海报")
+            # 如果字体都没找到，给个醒目的警告
+            st.error("⚠️ 服务器缺少字体文件 (msyh.ttc/font.ttc)，请检查 GitHub 仓库是否上传了该文件。")
 
     with col2:
         share_text = urllib.parse.quote(f"我是 {animal}！我的职场属性是【{archetype}】。快来测：https://moyu-test.app")
